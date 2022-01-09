@@ -11,6 +11,8 @@
  * H2 (~ 1 - 1000 ppm), and 
  * Methane / Propane / Iso-Butane (~ 1,000++ ppm). 
  * 
+ * AHT20 (AM2301B) SDA/SCL
+ * 
  * Keyestudio PPM2.5 dust sensor - A0 (5v) 
  * 3000 + = Very Bad
  * 1050-3000 = Bad
@@ -26,6 +28,13 @@
  * D8 - Five LEDs
  * D7, D6 - 7 LEDs
  * 
+ * 4-digit Display (TM1637)
+ * Yellow (5v)
+ * 4 - Clk
+ * 5 - DIO
+ * Green (5v)
+ * 10 - Clk
+ * 11 - DIO
  * 
  */
 
@@ -33,6 +42,10 @@
 #include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
 #include "FastLED.h"
+#include <Adafruit_GFX.h>
+#include <Adafruit_AHTX0.h>
+#include <TM1637Display.h>
+
 
 LiquidCrystal_I2C lcd(0x3F,16,2);  // set the LCD address to 0x3F for a 16 chars and 2 line display
 
@@ -65,6 +78,26 @@ CRGB seven_leds[SEVENLEDS_NUM];
 CLEDController *controllers[NUM_STRIPS];
 uint8_t gBrightness = 10;   //full brightness = 128 
 
+// 4-Digit Display
+// Module connection pins (GPIO/Digital Pins)
+
+// Green
+#define GREEN_CLK 10
+#define GREEN_DIO 11
+
+// Yellow
+#define YELLOW_CLK 4
+#define YELLOW_DIO 5
+
+TM1637Display green_display(GREEN_CLK, GREEN_DIO);
+TM1637Display yellow_display(YELLOW_CLK, YELLOW_DIO);
+
+
+float tempC;
+
+
+// AHT20 (AM2301B) SDA/SCL
+Adafruit_AHTX0 aht; 
 
 void setup() {
   Serial.begin(9600);
@@ -90,8 +123,17 @@ void setup() {
   lcd.setCursor(0,1);
   lcd.print("Calibrating...");
   delay(2000);
- 
-  
+
+
+ //AHT20
+  if (! aht.begin()) {
+    Serial.println("Could not find AHT? Check wiring");
+    while (1) delay(10);
+  }
+  Serial.println("AHT10 or AHT20 found");
+
+  Serial.println();
+
 
 }
 
@@ -111,10 +153,45 @@ void loop() {
   FastLED.show();
   delay(500);
   
+  //AHT20
+  sensors_event_t humidity, temp;
+  aht.getEvent(&humidity, &temp);// populate temp and humidity objects with fresh data
+  Serial.println(" ");
+  Serial.println("Requesting temperatures from AHT20 .... Done");
+  Serial.print("Temperature: "); Serial.print(temp.temperature); Serial.println(" degrees C");
+  Serial.print("Humidity: "); Serial.print(humidity.relative_humidity); Serial.println("% rH");
+  Serial.println(" ");
+  Serial.println(" ");
+  
+  green_display.setBrightness(0x0f);
+  yellow_display.setBrightness(0x0f);
+  uint8_t data[] = { 0xff, 0xff, 0xff, 0xff };
+  uint8_t blank[] = { 0x00, 0x00, 0x00, 0x00 };
+
+  green_display.setSegments(blank);
+  yellow_display.setSegments(blank);
+  
+  const uint8_t celsiusUnit[] = {
+  SEG_A | SEG_B | SEG_F | SEG_G,  // Circle
+  SEG_A | SEG_D | SEG_E | SEG_F   // C 
+  };
+  const uint8_t fahrenheitUnit[] = {
+  SEG_A | SEG_G | SEG_E | SEG_F   // F 
+  };
+   const uint8_t humidityUnit[] = {
+  SEG_B | SEG_C | SEG_G | SEG_E | SEG_F   // H 
+  };
+  
+  //delay(500);
+  green_display.showNumberDec((temp.temperature*1.8)+32, false, 3, 0); 
+  green_display.setSegments(fahrenheitUnit, 1, 3);
+  //delay(3000);
+  yellow_display.showNumberDec(humidity.relative_humidity, false, 3, 0); 
+  yellow_display.setSegments(humidityUnit, 1, 3);
+  //delay(3000);
 
 
-
-
+  // DUST SENSOR
 
   delay(samplingTime);
   digitalWrite(dustled,LOW); // power on the LED
